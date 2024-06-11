@@ -4,6 +4,9 @@ import struct
 class DCCNETFrame:
     SYNC_PATTERN = b'\xdc\xc0\x23\xc2'
     HEADER_SIZE = 14 # Bytes
+    ACK_FLAG = b'\x80'
+    END_FLAG = b'\x40'
+    RST_FLAG = b'\x20'
 
     def __init__(self, data=b"", frame_id=0, flags=0):
         self.data = data

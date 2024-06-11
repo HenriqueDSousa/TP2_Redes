@@ -26,7 +26,7 @@ class DCCNETReceiver:
 
     def send_ack(self, frame_id):
         ack_frame = DCCNETFrame(b"", frame_id, ACK_FLAG)
-        self.sock.sendto(ack_frame.to_bytes(), self.remote_address)
+        self.sock.sendto(ack_frame.build_frame(), self.remote_address)
 
     # def send_end(seld, frame_id):
 
