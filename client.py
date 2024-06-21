@@ -22,32 +22,27 @@ class DCCNETTransmitter:
         self.addr = addr
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(10)
+        self.frame_id = 0
 
-    def send_end(self, frame_id):
-        end_frame = DCCNETFrame(b"", frame_id, END_FLAG)
-        self.sock.sendto(end_frame.to_bytes(), (self.addr, self.port))
-
-    def send_rst(self, error_message):
-        rst_frame = DCCNETFrame(error_message.encode(), frame_id=65535, flags=RST_FLAG)
-        self.sock.sendto(rst_frame.build_frame(), (self.addr, self.port))
-        self.sock.close()
-
-    def send_ack(self, frame_id):
-        ack_frame = DCCNETFrame(b"", frame_id, ACK_FLAG)
-        self.sock.sendto(ack_frame.to_bytes(), (self.addr, self.port))
-
+    def set_frame_id(self, frame_id):
+        self.frame_id = frame_id
 
     def send_frame(self, data, frame_id, flags):
         frame = DCCNETFrame(data, frame_id=frame_id, flags=flags)
         self.sock.sendto(frame.build_frame(), (self.addr, self.port))
+
+    def send_end(self, frame_id):
+        end_frame = DCCNETFrame(b"", frame_id, END_FLAG)
+        self.sock.sendto(end_frame.to_bytes(), (self.addr, self.port))
         
     def receive_ack(self):
             
             try:
-                data, addr = self.sock.recvfrom(1024)
+
+                data, addr = self.sock.recvfrom(112)
                 frame_id, flags, chksum, payload = DCCNETFrame.decode_frame(data)
-                
-                if flags == ACK_FLAG:
+
+                if self.frame_id == frame_id and flags == ACK_FLAG and len(payload) == 0: 
                     return True
                 
                 else:
@@ -64,39 +59,30 @@ def main():
 
     transmitter = DCCNETTransmitter(addr=IP, port=PORT)
 
-    # Initialize frame_id to 0
-    frame_id = 0
-    last_received_frame_id = -1
+    transmitter.set_frame_id(0)
 
     # Send a frame with input data
-    for line in open(INPUT_FILE, "r"):
+    lines = list(open(INPUT_FILE, "r"))
+    
+    for i, line in enumerate(lines):
         print(line)
+        flag = 0
+        if i == len(lines) - 1:
+            flag = END_FLAG 
 
         while True:
-            transmitter.send_frame(data=line.encode(), frame_id=frame_id, flags=0)
+            transmitter.send_frame(data=line.encode(), frame_id=transmitter.frame_id, flags=flag)
 
-            if (transmitter.receive_ack()):
+            if transmitter.receive_ack():
+                if flag == END_FLAG:
+                    transmitter.sock.close()
                 break
-
             else:
                 print("Retransmitting frame")
                 time.sleep(1)
+
+        transmitter.set_frame_id(1 - transmitter.frame_id)
         
-        frame_id = 1 - frame_id
-
-    while True: 
-        
-        transmitter.send_end()
-
-        if transmitter.receive_ack():
-
-            transmitter.sock.close()
-
-            return
-        
-        
-    
-
 def client(ip: str, port: str, input_file: str, output_file: str) -> None:
 
     global IP

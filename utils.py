@@ -15,7 +15,19 @@ class DCCNETFrame:
 
     def build_frame(self):
         length = len(self.data)
-        chksum = self.compute_checksum(self.data)
+        temp_header = struct.pack(
+            "!4s4sHHBB",
+            self.SYNC_PATTERN,
+            self.SYNC_PATTERN,
+            0,
+            length,
+            self.frame_id,
+            self.flags,
+        )
+        data_bytes = struct.pack(">" + str(length) + "s", self.data)
+        temp_frame = temp_header + data_bytes
+
+        chksum = self.compute_checksum(temp_frame)
         header = struct.pack(
             "!4s4sHHBB",
             self.SYNC_PATTERN,
@@ -25,7 +37,6 @@ class DCCNETFrame:
             self.frame_id,
             self.flags,
         )
-        data_bytes = struct.pack(">" + str(length) + "s", self.data)
 
         self.frame = header + data_bytes
 
@@ -40,8 +51,8 @@ class DCCNETFrame:
             "!8sHHBB", data[: DCCNETFrame.HEADER_SIZE]
         )
 
-        payload = data[DCCNETFrame.HEADER_SIZE :]
-        print(sync_pattern, DCCNETFrame.SYNC_PATTERN * 2)
+        payload = data[DCCNETFrame.HEADER_SIZE:].decode("utf-8")
+
         if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
             raise ValueError("Invalid sync pattern")
 
@@ -51,12 +62,27 @@ class DCCNETFrame:
         if frame_id < 0 or frame_id > 1:
             raise ValueError("Invalid frame ID")
         
-        if chksum != DCCNETFrame.compute_checksum(data[DCCNETFrame.HEADER_SIZE :]):
+        if chksum != DCCNETFrame.compute_checksum(data):
+            print(chksum, DCCNETFrame.compute_checksum(data))
             raise ValueError("Checksum verification failed")
 
         return frame_id, flags, chksum, payload
 
     @staticmethod
     def compute_checksum(data):
-        checksum = sum(data) & 0xFFFF
+        data = data[:8] + b'\x00\x00' + data[10:]
+        checksum = 0
+        # Process each pair of bytes
+        for i in range(0, len(data), 2):
+            if i + 1 < len(data):
+                pair = (data[i] << 8) + data[i + 1]
+            else:
+                pair = data[i] << 8
+            checksum += pair
+            # Keep it to 16 bits
+            checksum = (checksum & 0xFFFF) + (checksum >> 16)
+        # Final wrap-around carry addition
+        checksum = (checksum & 0xFFFF) + (checksum >> 16)
+        # One's complement
+        checksum = ~checksum & 0xFFFF
         return checksum

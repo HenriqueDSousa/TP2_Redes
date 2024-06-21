@@ -8,6 +8,7 @@ SYNC = b'\xdc\xc0\x23\xc2'
 SYNC_BYTES = struct.pack("!4s", SYNC)
 ACK_FLAG = 0x80
 END_FLAG = 0x40
+RST_FLAG = 0x20
 PORT = 8000
 INPUT_FILE = "input_file.txt"
 OUTPUT_FILE = "output_file.txt"
@@ -16,6 +17,7 @@ OUTPUT_FILE = "output_file.txt"
 # SYNC(32) | SYNC(32) | chksum(16) | length(16) | ID(8) | flags(8) | DATA(--)
 
 class DCCNETReceiver:
+
     def __init__(self, port):
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -28,21 +30,38 @@ class DCCNETReceiver:
         ack_frame = DCCNETFrame(b"", frame_id, ACK_FLAG)
         self.sock.sendto(ack_frame.build_frame(), self.remote_address)
 
-    # def send_end(seld, frame_id):
+    def send_rst(self, error_message):
+        rst_frame = DCCNETFrame(error_message.encode(), frame_id=65535, flags=RST_FLAG)
+        self.sock.sendto(rst_frame.build_frame(), (self.addr, self.port))
+        self.sock.close()
+
 
     def receive_frame(self):
+
         while True:
-            frame, addr = self.sock.recvfrom(1024)
+
+            frame, addr = self.sock.recvfrom(4096)
             self.remote_address = addr
+
             try:
-                frame_id, _, chksum, data = DCCNETFrame.decode_frame(frame)
-                if (frame_id != self.last_received_id or self.last_received_checksum != chksum):
-                    self.last_received_id = frame_id
-                    
-                    print(f"Received data:", data)
+                frame_id, flags, chksum, payload = DCCNETFrame.decode_frame(frame)
+                print(frame_id, flags, chksum, payload)
+                if chksum != DCCNETFrame.compute_checksum(frame):
+                    print("Checksum mismatch, possible corruption, waiting retransmission")
+                    continue
+
+                if self.last_received_id == frame_id and self.last_received_checksum == chksum:
+                    print("Recieved duplicated package, retransmitting....")
+
+                with open(OUTPUT_FILE, "a") as f:
+                    f.write(payload)
+                    if flags == END_FLAG:
+                        f.write("\n")
+
                 self.send_ack(frame_id)
+
             except ValueError as e:
-                print(f"Frame error: {e}")
+                print(f"Frame error: {e}, waiting retransmission...")
 
     def start(self):
         threading.Thread(target=self.receive_frame, daemon=True).start()
@@ -59,11 +78,8 @@ def server(port: str, input_file: str, output_file: str) -> None:
 
 # Example usage
 if __name__ == "__main__":
-    # receiver = DCCNETReceiver(('localhost', PORT))
-    # receiver.start()
-    # while True:
-    #     pass  # Keep the main thread running
-    dcc_frame = DCCNETFrame(b"01020304")
-    print(dcc_frame.data)
-    print(dcc_frame.build_frame())
-    print(dcc_frame.decode_frame(dcc_frame.frame))
+    receiver = DCCNETReceiver(("127.0.0.1", PORT))
+    receiver.start()
+    print("Listening...")
+    while True:
+        pass
