@@ -42,16 +42,18 @@ class DCCNETTransmitter:
         print("Frame sent")
 
     def receive_ack(self):
-        try:
-            data, addr = self.sock.recvfrom(1024)
-            frame_id, flags, chksum, payload = DCCNETFrame.decode_frame(data)
-            if flags == ACK_FLAG:
-                print("ACK received")
-                return True
-            else:
-                return False
-        except socket.timeout:
-            print("Timeout Error")
+        for _ in range(16):
+            try:
+                data, addr = self.sock.recvfrom(1024)
+                frame_id, flags, chksum, payload = DCCNETFrame.decode_frame(data)
+                if flags == ACK_FLAG:
+                    print("ACK received")
+                    return True
+
+            except socket.timeout:
+                print("Timeout Error")
+
+        return False
 
 
     def receive_frame(self):
@@ -80,12 +82,11 @@ def main(ip, port, gas):
     # Send GAS 
     frame_id = 0
     transmitter.send_frame(data=(gas + '\n').encode(), frame_id=frame_id, flags=0)
-    for _ in range(16): 
-        if not transmitter.receive_ack():
-            print("Retransmitting GAS")
-            frame_id = 1 - frame_id
-            transmitter.send_frame(data=(gas + '\n').encode(), frame_id=frame_id, flags=0)
-            time.sleep(1)
+
+    # Fetching ACK
+    
+    if not transmitter.receive_ack():
+        transmitter.send_rst(error_message="ACK not received")
     
     frame_id = 1 - frame_id
     

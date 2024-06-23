@@ -3,7 +3,7 @@ import struct
 
 class DCCNETFrame:
     SYNC_PATTERN = b'\xdc\xc0\x23\xc2'
-    HEADER_SIZE = 14 # Bytes
+    HEADER_SIZE = 15 # Bytes
     ACK_FLAG = b'\x80'
     END_FLAG = b'\x40'
     RST_FLAG = b'\x20'
@@ -16,7 +16,7 @@ class DCCNETFrame:
     def build_frame(self):
         length = len(self.data)
         temp_header = struct.pack(
-            "!4s4sHHBB",
+            "!4s4sHHHB",
             self.SYNC_PATTERN,
             self.SYNC_PATTERN,
             0,
@@ -29,7 +29,7 @@ class DCCNETFrame:
 
         chksum = self.compute_checksum(temp_frame)
         header = struct.pack(
-            "!4s4sHHBB",
+            "!4s4sHHHB",
             self.SYNC_PATTERN,
             self.SYNC_PATTERN,
             chksum,
@@ -46,7 +46,7 @@ class DCCNETFrame:
     def decode_frame(data):
         print(data)
         sync_pattern, chksum, length, frame_id, flags = struct.unpack(
-            "!8sHHBB", data[: DCCNETFrame.HEADER_SIZE]
+            "!8sHHHB", data[: DCCNETFrame.HEADER_SIZE]
         )
 
         print(sync_pattern, chksum, length, frame_id, flags)
