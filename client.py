@@ -11,8 +11,8 @@ SYNC_BYTES = struct.pack("!4s", SYNC)
 ACK_FLAG = 0x80
 END_FLAG = 0x40
 RST_FLAG = 0x20
-IP = "127.0.0.1"
-PORT = 8000
+IP = "rubick.snes.2advanced.dev"
+PORT = 51001
 INPUT_FILE = "input_file.txt"
 OUTPUT_FILE = "output_file.txt"
 
@@ -96,8 +96,7 @@ def client(ip: str, port: str, input_file: str, output_file: str) -> None:
 
 
 if __name__ == "__main__":
-    
-    
+
     # dcc_frame = DCCNETFrame(b"01020304")
     # print(dcc_frame.data)
     # print(dcc_frame.build_frame())

@@ -44,29 +44,28 @@ class DCCNETFrame:
 
     @staticmethod
     def decode_frame(data):
-        if len(data) < DCCNETFrame.HEADER_SIZE:
-            raise ValueError("Empty data")
-
+        print(data)
         sync_pattern, chksum, length, frame_id, flags = struct.unpack(
             "!8sHHBB", data[: DCCNETFrame.HEADER_SIZE]
         )
 
-        payload = data[DCCNETFrame.HEADER_SIZE:].decode("utf-8")
+        print(sync_pattern, chksum, length, frame_id, flags)
+
+        payload = data[DCCNETFrame.HEADER_SIZE:DCCNETFrame.HEADER_SIZE + length]
 
         if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
             raise ValueError("Invalid sync pattern")
 
         if length != len(payload):
             raise ValueError("Invalid length")
-        
-        if frame_id < 0 or frame_id > 1:
-            raise ValueError("Invalid frame ID")
-        
+
         if chksum != DCCNETFrame.compute_checksum(data):
             print(chksum, DCCNETFrame.compute_checksum(data))
             raise ValueError("Checksum verification failed")
 
-        return frame_id, flags, chksum, payload
+        # Decode the payload
+        payload_str = payload.decode('ascii', errors='ignore')
+        return frame_id, flags, chksum, payload_str
 
     @staticmethod
     def compute_checksum(data):
