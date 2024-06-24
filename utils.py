@@ -1,5 +1,5 @@
 import struct
-
+import hashlib
 
 class DCCNETFrame:
     SYNC_PATTERN = b'\xdc\xc0\x23\xc2'
@@ -44,13 +44,14 @@ class DCCNETFrame:
 
     @staticmethod
     def decode_frame(data):
-        print(data)
+        
+        # print(data[:8], data[8:10], data[10:12], data[12:14], data[15])
         sync_pattern, chksum, length, frame_id, flags = struct.unpack(
             "!8sHHHB", data[: DCCNETFrame.HEADER_SIZE]
         )
-
-        print(sync_pattern, chksum, length, frame_id, flags)
-
+        
+        # print(sync_pattern, chksum, length, frame_id, flags)
+        
         payload = data[DCCNETFrame.HEADER_SIZE:DCCNETFrame.HEADER_SIZE + length]
 
         if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
@@ -59,12 +60,13 @@ class DCCNETFrame:
         if length != len(payload):
             raise ValueError("Invalid length")
 
-        if chksum != DCCNETFrame.compute_checksum(data):
-            print(chksum, DCCNETFrame.compute_checksum(data))
+        temp_frame = data[:8] + struct.pack("!H", 0) + data[10:]
+
+        if chksum != (DCCNETFrame.compute_checksum(temp_frame)):
             raise ValueError("Checksum verification failed")
 
-        # Decode the payload
         payload_str = payload.decode('ascii', errors='ignore')
+
         return frame_id, flags, chksum, payload_str
 
     @staticmethod
