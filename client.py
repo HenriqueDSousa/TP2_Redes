@@ -14,7 +14,6 @@ RST_FLAG = 0x20
 IP = "rubick.snes.2advanced.dev"
 PORT = 51001
 INPUT_FILE = "input_file.txt"
-OUTPUT_FILE = "output_file.txt"
 
 class DCCNETTransmitter:
     def __init__(self, addr, port):
@@ -39,7 +38,7 @@ class DCCNETTransmitter:
             
             try:
 
-                data, addr = self.sock.recvfrom(112)
+                data, addr = self.sock.recvfrom(120)
                 frame_id, flags, chksum, payload = DCCNETFrame.decode_frame(data)
 
                 if self.frame_id == frame_id and flags == ACK_FLAG and len(payload) == 0: 
@@ -83,17 +82,40 @@ def main():
 
         transmitter.set_frame_id(1 - transmitter.frame_id)
         
-def client(ip: str, port: str, input_file: str, output_file: str) -> None:
-
+def run_client(ip: str, port: str, input_file: str) -> None:
+    
     global IP
     global PORT
     global INPUT_FILE
-    global OUTPUT_FILE
     IP = ip
     PORT = int(port)
     INPUT_FILE = input_file
-    OUTPUT_FILE = output_file
 
+    transmitter = DCCNETTransmitter(addr=IP, port=PORT)
+
+    transmitter.set_frame_id(0)
+
+    # Send a frame with input data
+    lines = list(open(INPUT_FILE, "r"))
+    
+    for i, line in enumerate(lines):
+        print(line)
+        flag = 0
+        if i == len(lines) - 1:
+            flag = END_FLAG 
+
+        while True:
+            transmitter.send_frame(data=line.encode(), frame_id=transmitter.frame_id, flags=flag)
+
+            if transmitter.receive_ack():
+                if flag == END_FLAG:
+                    transmitter.sock.close()
+                break
+            else:
+                print("Retransmitting frame")
+                time.sleep(1)
+
+        transmitter.set_frame_id(1 - transmitter.frame_id)
 
 if __name__ == "__main__":
 

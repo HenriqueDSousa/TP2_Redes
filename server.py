@@ -10,11 +10,10 @@ ACK_FLAG = 0x80
 END_FLAG = 0x40
 RST_FLAG = 0x20
 PORT = 8000
-INPUT_FILE = "input_file.txt"
 OUTPUT_FILE = "output_file.txt"
 
 # Frame format:
-# SYNC(32) | SYNC(32) | chksum(16) | length(16) | ID(8) | flags(8) | DATA(--)
+# SYNC(32) | SYNC(32) | chksum(16) | length(16) | ID(16) | flags(8) | DATA(--)
 
 class DCCNETReceiver:
 
@@ -22,7 +21,6 @@ class DCCNETReceiver:
         self.port = port
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.bind(port)
-        self.lock = threading.Lock()
         self.last_received_id = None
         self.last_received_checksum = None
 
@@ -44,11 +42,8 @@ class DCCNETReceiver:
             self.remote_address = addr
 
             try:
-                frame_id, flags, chksum, payload = DCCNETFrame.decode_frame(frame)
+                chksum, length, frame_id, flags, payload = DCCNETFrame.decode_frame(frame)
                 print(frame_id, flags, chksum, payload)
-                if chksum != DCCNETFrame.compute_checksum(frame):
-                    print("Checksum mismatch, possible corruption, waiting retransmission")
-                    continue
 
                 if self.last_received_id == frame_id and self.last_received_checksum == chksum:
                     print("Recieved duplicated package, retransmitting....")
@@ -67,14 +62,17 @@ class DCCNETReceiver:
         threading.Thread(target=self.receive_frame, daemon=True).start()
 
 
-def server(port: str, input_file: str, output_file: str) -> None:
+def run_server(port: str, output_file: str) -> None:
     global PORT
-    global INPUT_FILE
     global OUTPUT_FILE
     PORT = int(port)
-    INPUT_FILE = input_file
     OUTPUT_FILE = output_file
-
+    
+    receiver = DCCNETReceiver(("127.0.0.1", PORT))
+    receiver.start()
+    print("Listening...")
+    while True:
+        pass
 
 # Example usage
 if __name__ == "__main__":

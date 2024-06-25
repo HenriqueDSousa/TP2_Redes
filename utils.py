@@ -1,15 +1,18 @@
 import struct
-import hashlib
+
+ACK_FLAG = b'\x80'
+END_FLAG = b'\x40'
+RST_FLAG = b'\x20'
+
+def bitwise_and(byte1, byte2):
+    return int.from_bytes(byte1, byteorder="big") & int.from_bytes(byte2, byteorder="big")
 
 class DCCNETFrame:
     SYNC_PATTERN = b'\xdc\xc0\x23\xc2'
     SYNC_BYTES = b'\xdc\xc0\x23\xc2'
     HEADER_SIZE = 15 # Bytes
-    ACK_FLAG = b'\x80'
-    END_FLAG = b'\x40'
-    RST_FLAG = b'\x20'
 
-    def __init__(self, data=b"", frame_id=0, flags=0):
+    def __init__(self, data=b"", frame_id=0, flags=b'\x00'):
         self.data = data
         self.frame_id = frame_id
         self.flags = flags
@@ -17,7 +20,7 @@ class DCCNETFrame:
     def build_frame(self):
         length = len(self.data)
         temp_header = struct.pack(
-            "!4s4sHHHB",
+            "!4s4sHHHs",
             self.SYNC_PATTERN,
             self.SYNC_PATTERN,
             0,
@@ -30,7 +33,7 @@ class DCCNETFrame:
 
         chksum = self.compute_checksum(temp_frame)
         header = struct.pack(
-            "!4s4sHHHB",
+            "!4s4sHHHs",
             self.SYNC_PATTERN,
             self.SYNC_PATTERN,
             chksum,
@@ -38,10 +41,8 @@ class DCCNETFrame:
             self.frame_id,
             self.flags,
         )
-
+        # print(f"chksum={hex(chksum)}\tlength={length}\tid={self.frame_id}\tflags={hex(self.flags)}\tdata={self.data}\n")
         self.frame = header + data_bytes
-
-        print(f"chksum={hex(chksum)}\tlength={length}\tid={self.frame_id}\tflags={hex(self.flags)}\tdata={self.data}\n")
 
         return self.frame
 
@@ -50,11 +51,10 @@ class DCCNETFrame:
         
         # print(data[:8], data[8:10], data[10:12], data[12:14], data[15])
         sync_pattern, chksum, length, frame_id, flags = struct.unpack(
-            "!8sHHHB", data[: DCCNETFrame.HEADER_SIZE]
+            "!8sHHHs", data[: DCCNETFrame.HEADER_SIZE]
         )
         
-        # print(sync_pattern, chksum, length, frame_id, flags)
-        
+
         payload = data[DCCNETFrame.HEADER_SIZE:DCCNETFrame.HEADER_SIZE + length]
 
         if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
@@ -62,6 +62,12 @@ class DCCNETFrame:
 
         if length != len(payload):
             raise ValueError("Invalid length")
+        
+        if length > 0 and bitwise_and(flags, ACK_FLAG):
+            raise ValueError("ACK flag should not be set for data frames")
+        
+        if bitwise_and(flags, ACK_FLAG) and bitwise_and(flags, END_FLAG):
+            raise ValueError("ACK and END flags cannot be set simultaneously")
 
         temp_frame = data[:8] + struct.pack("!H", 0) + data[10:]
 
@@ -70,7 +76,7 @@ class DCCNETFrame:
 
         payload_str = payload.decode('ascii', errors='ignore')
 
-        return frame_id, flags, chksum, payload_str
+        return chksum, length, frame_id, flags, payload_str
 
     @staticmethod
     def compute_checksum(data):
