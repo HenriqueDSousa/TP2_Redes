@@ -3,6 +3,7 @@ import hashlib
 
 class DCCNETFrame:
     SYNC_PATTERN = b'\xdc\xc0\x23\xc2'
+    SYNC_BYTES = b'\xdc\xc0\x23\xc2'
     HEADER_SIZE = 15 # Bytes
     ACK_FLAG = b'\x80'
     END_FLAG = b'\x40'
@@ -39,6 +40,8 @@ class DCCNETFrame:
         )
 
         self.frame = header + data_bytes
+
+        print(f"chksum={hex(chksum)}\tlength={length}\tid={self.frame_id}\tflags={hex(self.flags)}\tdata={self.data}\n")
 
         return self.frame
 
