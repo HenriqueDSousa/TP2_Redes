@@ -39,6 +39,8 @@ class DCCNETXfer:
         self.end_sent = False
         self.end_received = False
 
+        self.lock = threading.Lock()
+
     def set_frame_id(self, frame_id):
         self.frame_id = frame_id
 
@@ -65,11 +67,14 @@ class DCCNETXfer:
 
     def send_data(self):
         while True:
+            self.lock.acquire()
             self.send_frame(data=self.current_line.encode(), frame_id=self.frame_id, flags=self.current_flags)
 
             if bitwise_and(self.current_flags, END_FLAG):
                 self.end_sent = True
+                self.lock.release()
                 return
+            self.lock.release()
             time.sleep(1)
 
     def run(self):
@@ -91,7 +96,7 @@ class DCCNETXfer:
             try:
 
                 chksum, length, frame_id, flags, payload = DCCNETFrame.decode_frame(frame)
-
+                
                 if self.last_received_id == frame_id and self.last_received_checksum == chksum:
                     print("Recieved duplicated package")
                     if self.retrassmission_counter_ack > 16:
@@ -112,20 +117,23 @@ class DCCNETXfer:
                         self.send_ack(frame_id)
 
                     else:
+                        self.lock.acquire()
                         self.line_index += 1
                         if self.line_index < len(self.input_lines):
                             self.current_line = self.input_lines[self.line_index]
                             if self.line_index == len(self.input_lines) - 1:
                                 self.current_flags = END_FLAG
                         self.set_frame_id(1 - self.frame_id)
+                        self.lock.release()
 
 
             except ValueError as e:
                 print(f"Frame error: {e}, waiting retransmission...")
-            
+            self.lock.acquire()
             if self.end_received and self.end_sent:
                 print("File transmission ended")
                 break
+            self.lock.release()
 
 def usage() -> None:
     print("Client: ./dccnet-xfer -c <IP>:<PORT> <INPUT> <OUTPUT>")
