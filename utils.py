@@ -41,7 +41,8 @@ class DCCNETFrame:
             self.frame_id,
             self.flags,
         )
-        # print(f"chksum={hex(chksum)}\tlength={length}\tid={self.frame_id}\tflags={hex(self.flags)}\tdata={self.data}\n")
+        
+        print(f"chksum={hex(chksum)}\tlength={length}\tid={self.frame_id}\tflags={hex(self.flags[0])}\tdata={self.data}\n")
         self.frame = header + data_bytes
 
         return self.frame

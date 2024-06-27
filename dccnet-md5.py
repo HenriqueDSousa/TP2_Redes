@@ -11,9 +11,10 @@ from utils import DCCNETFrame
 # gas=2021031912:1:a3278d1a43ae8e5fdbe4de24a45f9bbf545e4202a1caa9b1808530f3d6bc1932+6cf2d2cdbfb0678d4db0a2e1337caf56e915769acf91b68e67cd8388e24e4169
 
 SYNC = 0xDCC023C2
-ACK_FLAG = 0x80
-END_FLAG = 0x40
-RST_FLAG = 0x20
+ACK_FLAG = b'\x80'
+END_FLAG = b'\x40'
+RST_FLAG = b'\x20'
+DEFAULT_FLAG = b'\x00'
 
 class DCCNETTransmitter:
     def __init__(self, addr, port):
@@ -34,7 +35,7 @@ class DCCNETTransmitter:
 
     def send_rst(self, error_message):
         print(f"SENDING:")
-        rst_frame = DCCNETFrame(error_message.encode(), frame_id=65535, flags=RST_FLAG)
+        rst_frame = DCCNETFrame(error_message.encode('ASCII'), frame_id=65535, flags=RST_FLAG)
         self.sock.sendto(rst_frame.build_frame(), (self.addr, self.port))
         self.sock.close()
 
@@ -45,26 +46,30 @@ class DCCNETTransmitter:
 
     def receive_ack(self):
             try:
-                sync1, addr = self.sock.recvfrom(4)
+                data, addr = self.sock.recvfrom(4096)
+
+                sync_pattern, chksum, length, frame_id, flags = struct.unpack(
+                    "!8sHHHs", data[: DCCNETFrame.HEADER_SIZE]
+                )
                 
-                if sync1 != DCCNETFrame.SYNC_BYTES:
+                payload = data[DCCNETFrame.HEADER_SIZE:DCCNETFrame.HEADER_SIZE + length]
+
+                if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
                     raise ValueError("Invalid sync pattern")
 
-                sync2, addr = self.sock.recvfrom(4)
+                if length != len(payload):
+                    raise ValueError("Invalid length")
 
-                if sync2 != DCCNETFrame.SYNC_BYTES:
-                    raise ValueError("Invalid sync pattern")
-                
-                header_data, addr = self.sock.recvfrom(7)
-                
-                chksum, length, frame_id, flags = struct.unpack("!HHHB", header_data)
+                temp_frame = data[:8] + struct.pack("!H", 0) + data[10:]
 
-                data, addr = self.sock.recvfrom(length)
+                if chksum != (DCCNETFrame.compute_checksum(temp_frame)):
+                    raise ValueError("Checksum verification failed")
 
-                payload = data.decode('ascii', errors='ignore')
+                payload_str = payload.decode('ascii', errors='ignore')
+
 
                 print(f"RECEIVING ACK:")
-                print(f"chksum={hex(chksum)}\tlength={length}\tid={frame_id}\tflags={hex(flags)}\tdata={payload}\n")
+                print(f"chksum={hex(chksum)}\tlength={length}\tid={frame_id}\tflags={hex(flags[0])}\tdata={payload}\n")
                 if flags == ACK_FLAG:
                     return True
                 else:
@@ -76,52 +81,39 @@ class DCCNETTransmitter:
         
     def receive_frame(self):
         try:
-            sync1, addr = self.sock.recvfrom(4)
+                
+            data, addr = self.sock.recvfrom(4096)
 
-            if sync1 != DCCNETFrame.SYNC_BYTES:
+            sync_pattern, chksum, length, frame_id, flags = struct.unpack(
+                "!8sHHHs", data[: DCCNETFrame.HEADER_SIZE]
+            )
+            
+            payload = data[DCCNETFrame.HEADER_SIZE:DCCNETFrame.HEADER_SIZE + length]
+
+            if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
                 raise ValueError("Invalid sync pattern")
-
-            sync2, addr = self.sock.recvfrom(4)
-            
-            if sync2 != DCCNETFrame.SYNC_BYTES:
-                raise ValueError("Invalid sync pattern")
-            
-            header_data, addr = self.sock.recvfrom(7)
-            
-            chksum, length, frame_id, flags = struct.unpack("!HHHB", header_data)
-
-            data, addr = self.sock.recvfrom(length)
-
-            payload = data.decode('ascii', errors='ignore')
 
             if length != len(payload):
                 raise ValueError("Invalid length")
 
-            temp_frame = struct.pack(
-                "!4s4sHHHB"+str(length)+"s",
-                sync1,
-                sync2,
-                0,
-                length,
-                frame_id,
-                flags,
-                payload.encode()
-            )
+            temp_frame = data[:8] + struct.pack("!H", 0) + data[10:]
 
             if chksum != (DCCNETFrame.compute_checksum(temp_frame)):
                 raise ValueError("Checksum verification failed")
 
+            payload_str = payload.decode('ascii', errors='ignore')
+
             print(f"RECEIVING FRAME:")
-            print(f"chksum={hex(chksum)}\tlength={length}\tid={frame_id}\tflags={hex(flags)}\tdata={payload}\n")
-            return chksum, length, frame_id, flags, payload
-    
+            print(f"chksum={hex(chksum)}\tlength={length}\tid={frame_id}\tflags={hex(flags[0])}\tdata={payload_str}\n")
+            return chksum, length, frame_id, flags, payload_str
+        
         except socket.timeout:
             print("Timeout Error")
             return None, None, None
 
 
 def compute_md5(data):
-    return hashlib.md5(data.encode()).hexdigest()
+    return hashlib.md5(data.encode('ASCII')).hexdigest()
 
 
 def main(ip, port, gas):
@@ -138,13 +130,13 @@ def main(ip, port, gas):
 
     # Send GAS 
     frame_id = 0
-    transmitter.send_frame(data=(gas + '\n').encode(), frame_id=frame_id, flags=0)
+    transmitter.send_frame(data=(gas + '\n').encode('ASCII'), frame_id=frame_id, flags=DEFAULT_FLAG)
 
     # Fetching ACK
     for _ in range(16): 
         if not transmitter.receive_ack():
             print("Retransmitting GAS")
-            transmitter.send_frame(data=(gas + '\n').encode(), frame_id=frame_id, flags=0)
+            transmitter.send_frame(data=(gas + '\n').encode('ASCII'), frame_id=frame_id, flags=DEFAULT_FLAG)
             time.sleep(1)
         else:
             break
@@ -163,18 +155,30 @@ def main(ip, port, gas):
         
         if flags == END_FLAG:
             print("Transmission ended by server.")
+
             transmitter.sock.close()
             break
+        
+        if flags == RST_FLAG:
+            print("Transmission error: received RST flag.")
+            transmitter.sock.close()
+            break    
 
-        data_lines = payload.decode().split('\n')
+        data_lines = payload.split('\n')
+
+        # print(data_lines)
         for line in data_lines:
             if line:
                 md5_checksum = compute_md5(line)
-                transmitter.send_frame(data=(md5_checksum + '\n').encode(), frame_id=frame_id, flags=0)
-                while not transmitter.receive_ack():
-                    print("Retransmitting checksum")
-                    transmitter.send_frame(data=(md5_checksum + '\n').encode(), frame_id=frame_id, flags=0)
-                    time.sleep(1)
+                transmitter.send_frame(data=(md5_checksum + '\n').encode('ASCII'), frame_id=frame_id, flags=DEFAULT_FLAG)
+                
+                for _ in range(16):
+                    if not transmitter.receive_ack():
+                        print("Retransmitting checksum")
+                        transmitter.send_frame(data=(md5_checksum + '\n').encode('ASCII'), frame_id=frame_id, flags=DEFAULT_FLAG)
+                        time.sleep(1)
+                    else:
+                        break
                 frame_id = 1 - frame_id
     
 
