@@ -19,9 +19,7 @@ class DCCNETTransmitter:
         self.port = port
         self.addr = addr
 
-        
-        try:
-            
+        try:            
             self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
             self.sock.settimeout(10)
             self.sock.connect((addr, port))
@@ -68,7 +66,7 @@ class DCCNETTransmitter:
                     data = resync(data)
                     print(data)
                     if data == None:
-                        raise ValueError("Invalid sync pattern")
+                        return None, None, None
 
 
                 chksum, length, frame_id, flags = struct.unpack(
@@ -76,9 +74,6 @@ class DCCNETTransmitter:
                 )
                 
                 payload = data[DCCNETFrame.HEADER_SIZE:DCCNETFrame.HEADER_SIZE + length]
-
-                if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
-                    raise ValueError("Invalid sync pattern")
 
                 if length != len(payload):
                     raise ValueError("Invalid length")
