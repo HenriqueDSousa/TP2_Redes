@@ -122,6 +122,7 @@ class DCCNETXfer:
                     if num_retransmissions > 17:
                         print("Max num of retransmissions reached")
                         self.send_rst("Max num of retransmissions reached")
+                        self.sock.close()
                         return
                 else:
                     num_retransmissions = 0
@@ -159,6 +160,7 @@ class DCCNETXfer:
                     print("Received Reset Flag")
                     print("Error message:", payload)
                     print("Connection terminated..")
+                    self.sock.close()
                     return
 
                 if self.last_received_id == frame_id and self.last_received_checksum == chksum:
@@ -194,6 +196,7 @@ class DCCNETXfer:
             with self.lock:
                 if self.end_received and self.end_sent:
                     print("File transmission ended")
+                    self.sock.close() 
                     break
 
 
