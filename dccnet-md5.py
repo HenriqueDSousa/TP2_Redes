@@ -8,8 +8,6 @@ import threading
 import hashlib
 from utils import DCCNETFrame
 
-# gas=2021031912:1:a3278d1a43ae8e5fdbe4de24a45f9bbf545e4202a1caa9b1808530f3d6bc1932+6cf2d2cdbfb0678d4db0a2e1337caf56e915769acf91b68e67cd8388e24e4169
-
 SYNC = 0xDCC023C2
 ACK_FLAG = b'\x80'
 END_FLAG = b'\x40'
@@ -20,8 +18,24 @@ class DCCNETTransmitter:
     def __init__(self, addr, port):
         self.port = port
         self.addr = addr
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.sock.settimeout(10)
+
+        
+        try:
+            
+            self.sock = socket.socket(socket.AF_INET6, socket.SOCK_STREAM)
+            self.sock.settimeout(10)
+            self.sock.connect((addr, port))
+        except socket.error: 
+            print("IPv6 not available")
+
+            try:
+                self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                self.sock.settimeout(10)
+                self.sock.connect((addr, port))
+
+            except socket.error:
+                print("Connection not available")
+                exit(1)
 
     def send_end(self, frame_id):
         print(f"SENDING:")
@@ -48,8 +62,17 @@ class DCCNETTransmitter:
             try:
                 data, addr = self.sock.recvfrom(4096)
 
-                sync_pattern, chksum, length, frame_id, flags = struct.unpack(
-                    "!8sHHHs", data[: DCCNETFrame.HEADER_SIZE]
+                sync_pattern = struct.unpack("!8s", data[:8])[0]
+                
+                if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
+                    data = resync(data)
+                    print(data)
+                    if data == None:
+                        raise ValueError("Invalid sync pattern")
+
+
+                chksum, length, frame_id, flags = struct.unpack(
+                    "!HHHs", data[8:15]
                 )
                 
                 payload = data[DCCNETFrame.HEADER_SIZE:DCCNETFrame.HEADER_SIZE + length]
@@ -63,7 +86,7 @@ class DCCNETTransmitter:
                 temp_frame = data[:8] + struct.pack("!H", 0) + data[10:]
 
                 if chksum != (DCCNETFrame.compute_checksum(temp_frame)):
-                    raise ValueError("Checksum verification failed")
+                    print("Checksum verification failed")
 
                 payload_str = payload.decode('ascii', errors='ignore')
 
@@ -80,18 +103,24 @@ class DCCNETTransmitter:
                 
         
     def receive_frame(self):
+
         try:
                 
             data, addr = self.sock.recvfrom(4096)
 
-            sync_pattern, chksum, length, frame_id, flags = struct.unpack(
-                "!8sHHHs", data[: DCCNETFrame.HEADER_SIZE]
+            sync_pattern = struct.unpack("!8s", data[:8])[0]
+            
+            if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
+                data = resync(data)
+                print(data)
+                if data == None:
+                    return None, None, None
+
+            chksum, length, frame_id, flags = struct.unpack(
+                "!HHHs", data[8:15]
             )
             
             payload = data[DCCNETFrame.HEADER_SIZE:DCCNETFrame.HEADER_SIZE + length]
-
-            if sync_pattern != DCCNETFrame.SYNC_PATTERN * 2:
-                raise ValueError("Invalid sync pattern")
 
             if length != len(payload):
                 raise ValueError("Invalid length")
@@ -99,7 +128,7 @@ class DCCNETTransmitter:
             temp_frame = data[:8] + struct.pack("!H", 0) + data[10:]
 
             if chksum != (DCCNETFrame.compute_checksum(temp_frame)):
-                raise ValueError("Checksum verification failed")
+                print("Checksum verification failed")
 
             payload_str = payload.decode('ascii', errors='ignore')
 
@@ -111,6 +140,13 @@ class DCCNETTransmitter:
             print("Timeout Error")
             return None, None, None
 
+def resync(data):
+        sync_pattern_bytes = DCCNETFrame.SYNC_PATTERN * 2
+        for i in range(1, len(data) - DCCNETFrame.HEADER_SIZE):
+            if data[i:i + 8] == sync_pattern_bytes:
+                return data[i:]
+        return None
+
 
 def compute_md5(data):
     return hashlib.md5(data.encode('ASCII')).hexdigest()
@@ -119,14 +155,7 @@ def compute_md5(data):
 def main(ip, port, gas):
     
     transmitter = DCCNETTransmitter(addr=ip, port=int(port))
-
-
-    try:
-        transmitter.sock.connect((ip, int(port)))
-    except socket.error: 
-        print("Connection error")
-        exit(1)
-
+    
 
     # Send GAS 
     frame_id = 0
@@ -161,6 +190,7 @@ def main(ip, port, gas):
         
         if flags == RST_FLAG:
             print("Transmission error: received RST flag.")
+            transmitter.send_frame(data =("Received RST flag\n").encode('ASCII'), frame_id=frame_id, flags=DEFAULT_FLAG )
             transmitter.sock.close()
             break    
 
